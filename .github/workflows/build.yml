@@ -1,4 +1,4 @@
-name: Build RG350 Image
+name: Build RG350
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Checkout (含 submodules)
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -25,36 +25,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             bc bison flex libssl-dev libncurses-dev \
-            u-boot-tools dosfstools e2fsprogs mtools \
-            fakeroot cpio gzip xz-utils \
+            u-boot-tools fakeroot cpio gzip xz-utils \
             libdrm-dev libegl-dev libgl-dev libgbm-dev \
-            meson ninja-build python3-mako \
-            qemu-utils
+            meson ninja-build python3-mako
 
-      - name: 应用 Linux 内核补丁
+      - name: 应用补丁
         run: |
           cd linux
           git config user.email "ci@rg350"
           git config user.name "CI"
           git am ../patches/linux/*.patch
-
-      - name: 应用 UBIBoot 补丁
-        run: |
-          cd ubiboot
+          cd ../ubiboot
           git config user.email "ci@rg350"
           git config user.name "CI"
           git am ../patches/ubiboot/*.patch
-
-      - name: 准备 Buildroot
-        run: |
-          cd buildroot
+          cd ../buildroot
           git config user.email "ci@rg350"
           git config user.name "CI"
-          # 应用全部 buildroot 补丁 (board overlay + defconfig + Makefile.legacy fix)
           git am ../patches/buildroot/*.patch
           cp ../configs/rg350_ci_defconfig configs/rg350_defconfig
 
-      - name: 构建 Buildroot (工具链 + rootfs)
+      - name: 构建 Buildroot
         run: |
           cd buildroot
           make rg350_defconfig
@@ -75,7 +66,6 @@ jobs:
               sed -i '/^_GL_EXTERN_C wchar_t \*wmemchr /i\# undef wmemchr' "$f"
           done
           make -j$(nproc)
-          ls -lh output/images/rootfs.cpio.gz
 
       - name: 构建 BusyBox initramfs
         run: |
@@ -84,8 +74,6 @@ jobs:
           command -v "${CROSS}gcc" && ${CROSS}gcc --version | head -1
 
           cd busybox
-
-          # 静态链接最小配置
           mkdir -p build
           make O=build defconfig
           sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' build/.config
@@ -105,14 +93,13 @@ jobs:
           make O=build -j$(nproc)
           make O=build CONFIG_PREFIX=$(pwd)/_install install
 
-          # 构建 rootfs
+          # rootfs
           ROOTFS=$(pwd)/rootfs
           rm -rf "$ROOTFS"
           mkdir -p "$ROOTFS"/{bin,sbin,usr/bin,usr/sbin,proc,sys,dev,tmp,etc,root,mnt,media}
           cp -a _install/* "$ROOTFS/"
           ln -sf bin/busybox "$ROOTFS/init"
 
-          # /sbin/init (stage 1: initramfs → switch_root to buildroot)
           rm -f "$ROOTFS/sbin/init"
           cat > "$ROOTFS/sbin/init" <<'INITSCRIPT'
           #!/bin/sh
@@ -174,7 +161,6 @@ jobs:
           mkdir -p build-minimal
           make O=build-minimal gcw0_defconfig
 
-          # 应用配置调整
           CFG="build-minimal/.config"
           scripts/config --file $CFG --enable DEBUG_KERNEL
           scripts/config --file $CFG --enable ZBOOT_INGENIC_UART
@@ -219,27 +205,22 @@ jobs:
 
           make O=build-minimal olddefconfig
 
-          # 设置 initramfs 和 cmdline
           sed -i "s|CONFIG_INITRAMFS_SOURCE=\"\"|CONFIG_INITRAMFS_SOURCE=\"$INITRAMFS_GZ\"|" $CFG
           sed -i 's|CONFIG_CMDLINE=".*"|CONFIG_CMDLINE="console=ttyS2,57600 rdinit=/sbin/init"|' $CFG
           sed -i 's|CONFIG_MIPS_CMDLINE_DTB_EXTEND=y|# CONFIG_MIPS_CMDLINE_DTB_EXTEND is not set|' $CFG
           sed -i 's|# CONFIG_MIPS_CMDLINE_BUILTIN_EXTEND is not set|CONFIG_MIPS_CMDLINE_BUILTIN_EXTEND=y|' $CFG
 
-          # 编译
           make O=build-minimal -j$(nproc) vmlinuz.bin dtbs
 
-          # 拼接 DTB
           cat build-minimal/arch/mips/boot/vmlinuz.bin \
               build-minimal/arch/mips/boot/dts/ingenic/gcw0.dtb \
               > build-minimal/vmlinuz_gcw0.bin
 
-          # 计算加载地址
           LINKER_BASE=0x80100000
           CALC_ADDR=$(build-minimal/arch/mips/boot/compressed/calc_vmlinuz_load_addr \
             build-minimal/arch/mips/boot/compressed/vmlinux.bin $LINKER_BASE 2>/dev/null || echo "0")
           LOAD_ADDR_HEX=$(printf "0x%08x" "$CALC_ADDR")
 
-          # 生成 uImage
           mkimage -A mips -O linux -T kernel -C none \
             -a "$LOAD_ADDR_HEX" -e "$LOAD_ADDR_HEX" \
             -n "Linux 7.0.12" \
@@ -255,88 +236,28 @@ jobs:
           CONFIG=gcw0 CROSS_COMPILE=mipsel-buildroot-linux-gnu- V=1 make
           ls -lh output/gcw0/ubiboot-rg350.bin
 
-      - name: 组装 rg350.img
+      - name: 打包产物
         run: |
-          UBIBOOT="$(pwd)/ubiboot/output/gcw0/ubiboot-rg350.bin"
-          KERNEL="$(pwd)/linux/build-minimal/uzImage.bin"
-          ROOTFS_DIR="$(pwd)/buildroot/output/target"
+          mkdir -p output
+          cp ubiboot/output/gcw0/ubiboot-rg350.bin output/
+          cp linux/build-minimal/uzImage.bin output/UZIMAGE.BIN
+          cd buildroot/output/target
+          tar --exclude='lost+found' --exclude='THIS_IS_NOT_YOUR_ROOT_FILESYSTEM' \
+            -czf ../../../output/rootfs.tar.gz .
+          cd ../../..
+          ls -lh output/
+          sha256sum output/*
 
-          [ -f "$UBIBOOT" ] || { echo "UBIBoot 不存在"; exit 1; }
-          [ -f "$KERNEL" ]  || { echo "内核不存在"; exit 1; }
-
-          IMG=rg350.img
-
-          # 创建 800MB 镜像
-          dd if=/dev/zero of=$IMG bs=1M count=800 status=progress
-
-          # 写入 UBIBoot 到 sector 1
-          dd if=$UBIBOOT of=$IMG bs=512 seek=1 conv=notrunc
-
-          # 验证 LPSM 魔数
-          MAGIC=$(dd if=$IMG bs=1 skip=512 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')
-          [ "$MAGIC" = "4c50534d" ] || { echo "LPSM 魔数不匹配: $MAGIC"; exit 1; }
-          echo "LPSM 魔数验证通过"
-
-          # 创建 MBR 分区表
-          # Partition 1: FAT32 boot (400MB, start=8192)
-          # Partition 2: ext4 rootfs (剩余空间)
-          sudo sfdisk $IMG <<EOF
-          label: dos
-          unit: sectors
-
-          1 : start=8192, size=819200, type=0c, bootable
-          2 : start=827392, type=83
-          EOF
-
-          # 挂载为 loop 设备
-          LOOP=$(sudo losetup -fP --show $IMG)
-          echo "Loop device: $LOOP"
-
-          # 格式化
-          sudo mkfs.vfat -F 32 -n BOOT ${LOOP}p1
-          sudo mkfs.ext4 -L rootfs ${LOOP}p2
-
-          # 复制内核到 boot 分区
-          mkdir -p /tmp/rg350-boot
-          sudo mount ${LOOP}p1 /tmp/rg350-boot
-          sudo cp $KERNEL /tmp/rg350-boot/UZIMAGE.BIN
-          echo "Boot 分区:"
-          ls -lh /tmp/rg350-boot/
-          sudo umount /tmp/rg350-boot
-
-          # 部署 rootfs
-          mkdir -p /tmp/rg350-rootfs
-          sudo mount ${LOOP}p2 /tmp/rg350-rootfs
-          sudo tar -C $ROOTFS_DIR \
-            --exclude='lost+found' \
-            --exclude='THIS_IS_NOT_YOUR_ROOT_FILESYSTEM' \
-            -cf - . \
-            | sudo tar -C /tmp/rg350-rootfs --no-same-owner -xf -
-          sudo umount /tmp/rg350-rootfs
-
-          # 清理
-          sudo losetup -d $LOOP
-          rm -rf /tmp/rg350-boot /tmp/rg350-rootfs
-
-          # 验证
-          echo "=== 最终镜像 ==="
-          ls -lh $IMG
-          file $IMG
-          sfdisk -l $IMG
-          MAGIC=$(dd if=$IMG bs=1 skip=512 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')
-          echo "LPSM 魔数: $MAGIC (应为 4c50534d)"
-
-      - name: 上传 rg350.img
+      - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: rg350-img
-          path: rg350.img
+          name: rg350-firmware
+          path: output/
           retention-days: 30
-          compression-level: 0
 
       - name: 发布 Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: rg350.img
+          files: output/*
           generate_release_notes: true
