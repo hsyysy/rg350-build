@@ -98,7 +98,7 @@ jobs:
                      ECHO TEST TRUE FALSE VI GUNZIP GZIP TAR DF FREE DMESG STTY INIT; do
             sed -i "s/# CONFIG_${opt} is not set/CONFIG_${opt}=y/" build/.config 2>/dev/null || true
           done
-          for opt in SELINUX SYSTEMD INETD FEATURE_HAVE_RPC FEATURE_INETD_RPC; do
+          for opt in SELINUX SYSTEMD INETD FEATURE_HAVE_RPC FEATURE_INETD_RPC TC; do
             sed -i "s/CONFIG_${opt}=y/# CONFIG_${opt} is not set/" build/.config 2>/dev/null || true
           done
           make O=build oldconfig
