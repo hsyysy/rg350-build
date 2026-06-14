@@ -1,0 +1,17 @@
+# Build outputs
+*.img
+*.bin
+*.o
+*.ko
+*.dtb
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

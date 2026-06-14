@@ -1,0 +1,37 @@
+From a1d103be9fcdcc1a86939777f88bfcf8c93c8dd8 Mon Sep 17 00:00:00 2001
+From: hsyysy <hsyysy@163.com>
+Date: Wed, 10 Jun 2026 08:15:08 +0800
+Subject: [PATCH 02/10] MIPS: zboot: fix stack protector leaking into
+ decompressor
+
+GCC 14 enables -fstack-protector-strong by default. The zboot Makefile
+filtered out -fstack-protector but not -fstack-protector-strong, causing
+dbg.o to reference undefined __stack_chk_guard/__stack_chk_fail in the
+bare-metal decompressor environment. This caused an immediate crash with
+no serial output during early boot.
+
+Add explicit -fno-stack-protector to ensure the decompressor is built
+without stack protection regardless of compiler defaults.
+
+Signed-off-by: x <x@rg350>
+---
+ arch/mips/boot/compressed/Makefile | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/mips/boot/compressed/Makefile b/arch/mips/boot/compressed/Makefile
+index e0b8ec9a9..c4d7ff7ba 100644
+--- a/arch/mips/boot/compressed/Makefile
++++ b/arch/mips/boot/compressed/Makefile
+@@ -20,7 +20,8 @@ BOOT_HEAP_SIZE := 0x400000
+ # Disable Function Tracer
+ KBUILD_CFLAGS := $(filter-out $(CC_FLAGS_FTRACE), $(KBUILD_CFLAGS))
+ 
+-KBUILD_CFLAGS := $(filter-out -fstack-protector, $(KBUILD_CFLAGS))
++KBUILD_CFLAGS := $(filter-out -fstack-protector -fstack-protector-strong -fstack-protector-all, $(KBUILD_CFLAGS))
++KBUILD_CFLAGS += -fno-stack-protector
+ 
+ # Disable lq/sq in zboot
+ ifdef CONFIG_CPU_LOONGSON64
+-- 
+2.54.0
+

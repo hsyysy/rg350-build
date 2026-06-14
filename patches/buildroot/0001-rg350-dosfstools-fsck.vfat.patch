@@ -1,0 +1,83 @@
+From 422c7d80c3b7bd8267ec9afcf7b27cb877c6868b Mon Sep 17 00:00:00 2001
+From: hsyysy <hsyysy@163.com>
+Date: Sat, 13 Jun 2026 18:56:44 +0800
+Subject: [PATCH 1/4] =?UTF-8?q?rg350:=20=E6=B7=BB=E5=8A=A0=20dosfstools=20?=
+ =?UTF-8?q?(fsck.vfat)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ configs/rg350_defconfig | 59 +++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 59 insertions(+)
+ create mode 100644 configs/rg350_defconfig
+
+diff --git a/configs/rg350_defconfig b/configs/rg350_defconfig
+new file mode 100644
+index 00000000..198dca2a
+--- /dev/null
++++ b/configs/rg350_defconfig
+@@ -0,0 +1,59 @@
++# RG350 (Ingenic JZ4770) — Buildroot defconfig
++# 用法: make rg350_defconfig
++
++# ─── 架构 ──────────────────────────────────────────────────────
++BR2_mipsel=y
++BR2_mips_32=y
++# BR2_MIPS_SOFT_FLOAT is not set
++
++# ─── 交叉编译工具链 (复用已有的 buildroot 工具链) ────────────────
++BR2_TOOLCHAIN_EXTERNAL=y
++BR2_TOOLCHAIN_EXTERNAL_CUSTOM=y
++BR2_TOOLCHAIN_EXTERNAL_PREINSTALLED=y
++BR2_TOOLCHAIN_EXTERNAL_PATH="/opt/rg350-toolchain"
++BR2_TOOLCHAIN_EXTERNAL_PREFIX="mipsel-buildroot-linux-gnu"
++BR2_TOOLCHAIN_EXTERNAL_CUSTOM_GLIBC=y
++BR2_TOOLCHAIN_EXTERNAL_HEADERS_5_4=y
++BR2_TOOLCHAIN_EXTERNAL_GCC_14=y
++BR2_TOOLCHAIN_EXTERNAL_CXX=y
++BR2_TOOLCHAIN_EXTERNAL_OPENMP=y
++# BR2_TOOLCHAIN_EXTERNAL_INET_RPC is not set
++
++# ─── 系统 ──────────────────────────────────────────────────────
++BR2_TARGET_GENERIC_HOSTNAME="rg350"
++BR2_TARGET_GENERIC_ISSUE="RG350 Linux 7.0.12"
++BR2_ROOTFS_OVERLAY="board/rg350/rootfs_overlay"
++
++# ─── init 系统 (busybox init, 平滑过渡) ────────────────────────
++BR2_INIT_BUSYBOX=y
++
++# ─── rootfs 格式 ───────────────────────────────────────────────
++BR2_TARGET_ROOTFS_CPIO=y
++BR2_TARGET_ROOTFS_CPIO_GZIP=y
++# BR2_TARGET_ROOTFS_TAR is not set
++
++# ─── 基础工具 ──────────────────────────────────────────────────
++BR2_PACKAGE_BUSYBOX=y
++BR2_PACKAGE_COREUTILS=y
++BR2_PACKAGE_PROCPS_NG=y
++
++# ─── 网络 ──────────────────────────────────────────────────────
++BR2_PACKAGE_DROPBEAR=y
++BR2_PACKAGE_IPROUTE2=y
++BR2_PACKAGE_IPUTILS=y
++
++# ─── 文件系统工具 ──────────────────────────────────────────────
++BR2_PACKAGE_E2FSPROGS=y
++BR2_PACKAGE_DOSFSTOOLS=y
++
++# ─── 调试工具 ──────────────────────────────────────────────────
++BR2_PACKAGE_STRACE=y
++BR2_PACKAGE_LTRACE=y
++
++# ─── 音频 ──────────────────────────────────────────────────────
++BR2_PACKAGE_ALSA_UTILS=y
++BR2_PACKAGE_ALSA_UTILS_APLAY=y
++BR2_PACKAGE_ALSA_UTILS_AMIXER=y
++
++# ─── 不编译内核 (已有独立的 build-kernel.sh) ──────────────────
++# BR2_LINUX_KERNEL is not set
+-- 
+2.54.0
+

@@ -1,0 +1,64 @@
+# RG350 CI defconfig — uses buildroot-built toolchain (no external path dependency)
+# Based on rg350_defconfig, adapted for GitHub Actions
+
+# ─── 架构 ──────────────────────────────────────────────────────
+BR2_mipsel=y
+BR2_mips_32=y
+# BR2_MIPS_SOFT_FLOAT is not set
+BR2_MIPS_NAN_2008=y
+
+# ─── 交叉编译工具链 (buildroot 内建, CI 专用) ──────────────────
+BR2_TOOLCHAIN_BUILDROOT=y
+BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
+BR2_GCC_VERSION_14_X=y
+BR2_GCC_ENABLE_OPENMP=y
+BR2_ENABLE_LTO=y
+
+# ─── 系统 ──────────────────────────────────────────────────────
+BR2_TARGET_GENERIC_HOSTNAME="rg350"
+BR2_TARGET_GENERIC_ISSUE="RG350 Linux 7.0.12"
+BR2_ROOTFS_OVERLAY="board/rg350/rootfs_overlay"
+
+# ─── init 系统 (busybox init, 平滑过渡) ────────────────────────
+BR2_INIT_BUSYBOX=y
+
+# ─── rootfs 格式 ───────────────────────────────────────────────
+BR2_TARGET_ROOTFS_CPIO=y
+BR2_TARGET_ROOTFS_CPIO_GZIP=y
+# BR2_TARGET_ROOTFS_TAR is not set
+
+# ─── 基础工具 ──────────────────────────────────────────────────
+BR2_PACKAGE_BUSYBOX=y
+BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="board/rg350/busybox.fragment"
+BR2_PACKAGE_COREUTILS=y
+BR2_PACKAGE_PROCPS_NG=y
+
+# ─── 网络 ──────────────────────────────────────────────────────
+BR2_PACKAGE_DROPBEAR=y
+BR2_PACKAGE_IPROUTE2=y
+BR2_PACKAGE_IPUTILS=y
+
+# ─── 文件系统工具 ──────────────────────────────────────────────
+BR2_PACKAGE_E2FSPROGS=y
+BR2_PACKAGE_DOSFSTOOLS=y
+BR2_PACKAGE_DOSFSTOOLS_FSCK_FAT=y
+
+# ─── 调试工具 ──────────────────────────────────────────────────
+BR2_PACKAGE_STRACE=y
+BR2_PACKAGE_LTRACE=y
+
+# ─── 音频 ──────────────────────────────────────────────────────
+BR2_PACKAGE_ALSA_UTILS=y
+BR2_PACKAGE_ALSA_UTILS_APLAY=y
+BR2_PACKAGE_ALSA_UTILS_APLAY=y
+BR2_PACKAGE_ALSA_UTILS_AMIXER=y
+
+# ─── GPU 用户态 (Mesa Etnaviv + libdrm) ────────────────────────
+BR2_PACKAGE_MESA3D=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_ETNAVIV=y
+BR2_PACKAGE_MESA3D_OPENGL_EGL=y
+BR2_PACKAGE_MESA3D_OPENGL_ES=y
+BR2_PACKAGE_MESA3D_GBM=y
+
+# ─── 不编译内核 (已有独立的 build-kernel.sh) ──────────────────
+# BR2_LINUX_KERNEL is not set

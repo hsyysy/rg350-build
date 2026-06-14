@@ -1,0 +1,29 @@
+From 27f5d73445dd2e692a24a4cf1e0a3b662bd1d68e Mon Sep 17 00:00:00 2001
+From: hsyysy <hsyysy@163.com>
+Date: Sat, 13 Jun 2026 19:08:53 +0800
+Subject: [PATCH 2/4] =?UTF-8?q?rg350:=20=E5=90=AF=E7=94=A8=20fsck.fat=20(d?=
+ =?UTF-8?q?osfstools)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ configs/rg350_defconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/configs/rg350_defconfig b/configs/rg350_defconfig
+index 198dca2a..6e89e1d0 100644
+--- a/configs/rg350_defconfig
++++ b/configs/rg350_defconfig
+@@ -45,6 +45,7 @@ BR2_PACKAGE_IPUTILS=y
+ # ─── 文件系统工具 ──────────────────────────────────────────────
+ BR2_PACKAGE_E2FSPROGS=y
+ BR2_PACKAGE_DOSFSTOOLS=y
++BR2_PACKAGE_DOSFSTOOLS_FSCK_FAT=y
+ 
+ # ─── 调试工具 ──────────────────────────────────────────────────
+ BR2_PACKAGE_STRACE=y
+-- 
+2.54.0
+

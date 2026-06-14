@@ -1,0 +1,136 @@
+From 02280e08471f276fb433e9d29627771a03d76a21 Mon Sep 17 00:00:00 2001
+From: hsyysy <hsyysy@163.com>
+Date: Sun, 14 Jun 2026 16:01:21 +0800
+Subject: [PATCH 09/10] drm: ingenic: clean up DRM bridge and panel drivers
+
+---
+ drivers/gpu/drm/ingenic/ingenic-drm-drv.c     | 43 +++++++++++++++----
+ drivers/gpu/drm/ingenic/ingenic-drm.h         |  3 +-
+ drivers/gpu/drm/ingenic/ingenic-ipu.c         |  2 +-
+ drivers/gpu/drm/panel/panel-novatek-nt39016.c |  2 +-
+ 4 files changed, 38 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/gpu/drm/ingenic/ingenic-drm-drv.c b/drivers/gpu/drm/ingenic/ingenic-drm-drv.c
+index 8a82e3802..ea248edbc 100644
+--- a/drivers/gpu/drm/ingenic/ingenic-drm-drv.c
++++ b/drivers/gpu/drm/ingenic/ingenic-drm-drv.c
+@@ -257,6 +257,18 @@ static void ingenic_drm_crtc_atomic_enable(struct drm_crtc *crtc,
+ 	regmap_write(priv->map, JZ_REG_LCD_DA0, dma_hwdesc_addr(priv, next_id));
+ 	regmap_write(priv->map, JZ_REG_LCD_DA1, dma_hwdesc_addr(priv, 1));
+ 
++	/*
++	 * JZ4770 OSD mode: F1 (primary plane) uses OSDCTRL BPP for
++	 * pixel format, but LCD_CTRL BPP controls the DMA engine's
++	 * base transfer width.  Default BPP=0 (1bpp) causes the DMA
++	 * to read 1 bit per pixel — each byte becomes 8 monochrome
++	 * pixels, creating a "grid" artifact.  Sync to 18_24 (32bpp).
++	 */
++	if (priv->soc_info->has_osd)
++		regmap_update_bits(priv->map, JZ_REG_LCD_CTRL,
++				   JZ_LCD_CTRL_BPP_MASK,
++				   JZ_LCD_CTRL_BPP_18_24);
++
+ 	drm_crtc_vblank_on(crtc);
+ }
+ 
+@@ -565,10 +577,10 @@ static void ingenic_drm_plane_atomic_disable(struct drm_plane *plane,
+ }
+ 
+ void ingenic_drm_plane_config(struct device *dev,
+-			      struct drm_plane *plane, u32 fourcc)
++			      struct drm_plane *plane, u32 fourcc,
++			      const struct drm_plane_state *state)
+ {
+ 	struct ingenic_drm *priv = dev_get_drvdata(dev);
+-	struct drm_plane_state *state = plane->state;
+ 	unsigned int xy_reg, size_reg;
+ 	unsigned int ctrl = 0;
+ 
+@@ -630,12 +642,12 @@ void ingenic_drm_plane_config(struct device *dev,
+ 			size_reg = JZ_REG_LCD_SIZE0;
+ 		}
+ 
+-		regmap_write(priv->map, xy_reg,
+-			     state->crtc_x << JZ_LCD_XYP01_XPOS_LSB |
+-			     state->crtc_y << JZ_LCD_XYP01_YPOS_LSB);
+-		regmap_write(priv->map, size_reg,
+-			     state->crtc_w << JZ_LCD_SIZE01_WIDTH_LSB |
+-			     state->crtc_h << JZ_LCD_SIZE01_HEIGHT_LSB);
++		unsigned int xy_val = state->crtc_x << JZ_LCD_XYP01_XPOS_LSB |
++				      state->crtc_y << JZ_LCD_XYP01_YPOS_LSB;
++		unsigned int sz_val = state->crtc_w << JZ_LCD_SIZE01_WIDTH_LSB |
++				      state->crtc_h << JZ_LCD_SIZE01_HEIGHT_LSB;
++		regmap_write(priv->map, xy_reg, xy_val);
++		regmap_write(priv->map, size_reg, sz_val);
+ 	}
+ }
+ 
+@@ -723,11 +735,24 @@ static void ingenic_drm_plane_atomic_update(struct drm_plane *plane,
+ 		if (drm_atomic_crtc_needs_modeset(crtc_state)) {
+ 			fourcc = newstate->fb->format->format;
+ 
+-			ingenic_drm_plane_config(priv->dev, plane, fourcc);
++			ingenic_drm_plane_config(priv->dev, plane, fourcc, newstate);
+ 
+ 			crtc_state->color_mgmt_changed = fourcc == DRM_FORMAT_C8;
+ 		}
+ 
++		/*
++		 * For OSD F1 (primary plane): always sync overlay pos/size
++		 * from CRTC mode. The first drmModeSetCrtc after boot
++		 * (same mode, no modeset) would otherwise leave XYP1/SIZE1
++		 * at reset values => invisible F1, F0 garbage = white noise.
++		 */
++		if (priv->soc_info->has_osd && plane == &priv->f1) {
++			struct drm_display_mode *m = &newstate->crtc->mode;
++			regmap_write(priv->map, JZ_REG_LCD_XYP1, 0);
++			regmap_write(priv->map, JZ_REG_LCD_SIZE1,
++				     m->hdisplay | (m->vdisplay << 16));
++		}
++
+ 		if (crtc_state->color_mgmt_changed)
+ 			ingenic_drm_update_palette(priv, crtc_state->gamma_lut->data);
+ 	}
+diff --git a/drivers/gpu/drm/ingenic/ingenic-drm.h b/drivers/gpu/drm/ingenic/ingenic-drm.h
+index e5bd007ea..2ba737ea6 100644
+--- a/drivers/gpu/drm/ingenic/ingenic-drm.h
++++ b/drivers/gpu/drm/ingenic/ingenic-drm.h
+@@ -223,7 +223,8 @@ struct drm_plane_state;
+ struct platform_driver;
+ 
+ void ingenic_drm_plane_config(struct device *dev,
+-			      struct drm_plane *plane, u32 fourcc);
++			      struct drm_plane *plane, u32 fourcc,
++			      const struct drm_plane_state *state);
+ void ingenic_drm_plane_disable(struct device *dev, struct drm_plane *plane);
+ bool ingenic_drm_map_noncoherent(const struct device *dev);
+ 
+diff --git a/drivers/gpu/drm/ingenic/ingenic-ipu.c b/drivers/gpu/drm/ingenic/ingenic-ipu.c
+index 289274f46..5e412af2e 100644
+--- a/drivers/gpu/drm/ingenic/ingenic-ipu.c
++++ b/drivers/gpu/drm/ingenic/ingenic-ipu.c
+@@ -384,7 +384,7 @@ static void ingenic_ipu_plane_atomic_update(struct drm_plane *plane,
+ 	if (finfo->num_planes == 1)
+ 		regmap_set_bits(ipu->map, JZ_REG_IPU_CTRL, JZ_IPU_CTRL_SPKG_SEL);
+ 
+-	ingenic_drm_plane_config(ipu->master, plane, DRM_FORMAT_XRGB8888);
++	ingenic_drm_plane_config(ipu->master, plane, DRM_FORMAT_XRGB8888, plane->state);
+ 
+ 	/* Set the input height/width/strides */
+ 	if (finfo->num_planes > 2)
+diff --git a/drivers/gpu/drm/panel/panel-novatek-nt39016.c b/drivers/gpu/drm/panel/panel-novatek-nt39016.c
+index 3df66ae76..bf9fe8372 100644
+--- a/drivers/gpu/drm/panel/panel-novatek-nt39016.c
++++ b/drivers/gpu/drm/panel/panel-novatek-nt39016.c
+@@ -72,7 +72,7 @@ static const struct reg_sequence nt39016_panel_regs[] = {
+ 	RV(NT39016_REG_SYSTEM, 0x00),
+ 	RV(NT39016_REG_TIMING, 0x00),
+ 	RV(NT39016_REG_OP, 0x03),
+-	RV(NT39016_REG_DATA_IN, 0xCC),
++	//RV(NT39016_REG_DATA_IN, 0xCC),  /* skip - test if default works better */
+ 	RV(NT39016_REG_SRC_TIMING_DELAY, 0x46),
+ 	RV(NT39016_REG_GATE_TIMING_DELAY, 0x05),
+ 	RV(NT39016_REG_RESERVED, 0x00),
+-- 
+2.54.0
+

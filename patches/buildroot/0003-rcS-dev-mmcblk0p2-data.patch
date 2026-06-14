@@ -1,0 +1,54 @@
+From 21c59ae7c205716c9aa249b0bea2f510d1bbd128 Mon Sep 17 00:00:00 2001
+From: hsyysy <hsyysy@163.com>
+Date: Sat, 13 Jun 2026 19:55:13 +0800
+Subject: [PATCH 3/4] =?UTF-8?q?rcS:=20=E8=87=AA=E5=8A=A8=E6=8C=82=E8=BD=BD?=
+ =?UTF-8?q?=E6=95=B0=E6=8D=AE=E5=88=86=E5=8C=BA=20/dev/mmcblk0p2=20?=
+ =?UTF-8?q?=E2=86=92=20/data?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ board/rg350/rootfs_overlay/etc/init.d/rcS | 29 +++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+ create mode 100755 board/rg350/rootfs_overlay/etc/init.d/rcS
+
+diff --git a/board/rg350/rootfs_overlay/etc/init.d/rcS b/board/rg350/rootfs_overlay/etc/init.d/rcS
+new file mode 100755
+index 00000000..9f3e1f10
+--- /dev/null
++++ b/board/rg350/rootfs_overlay/etc/init.d/rcS
+@@ -0,0 +1,29 @@
++#!/bin/sh
++# /etc/init.d/rcS — RG350 启动脚本
++
++# USB 网络自动配置
++ip link set usb0 up 2>/dev/null
++ip addr add 10.1.1.2/24 dev usb0 2>/dev/null
++
++# dropbear SSH
++if [ -x /usr/sbin/dropbear ]; then
++    mkdir -p /etc/dropbear /root/.ssh
++    # 自动生成 host key (首次启动)
++    [ -f /etc/dropbear/dropbear_rsa_host_key ] || \
++        dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key 2>/dev/null
++    [ -f /etc/dropbear/dropbear_ecdsa_host_key ] || \
++        dropbearkey -t ecdsa -f /etc/dropbear/dropbear_ecdsa_host_key 2>/dev/null
++    dropbear -R
++fi
++
++# 挂载 SD 卡 boot 分区 (等待 SD 卡就绪)
++mkdir -p /boot
++for i in 1 2 3 4 5 6 7 8 9 10; do
++    [ -b /dev/mmcblk0p1 ] && break
++    sleep 1
++done
++mount /dev/mmcblk0p1 /boot 2>/dev/null
++
++# 挂载数据分区
++mkdir -p /data
++mount /dev/mmcblk0p2 /data 2>/dev/null
+-- 
+2.54.0
+

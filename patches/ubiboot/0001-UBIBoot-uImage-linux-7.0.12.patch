@@ -1,0 +1,152 @@
+From 056499edb71273ddaf3a16d34f1697c4db5ba338 Mon Sep 17 00:00:00 2001
+From: hsyysy <hsyysy@163.com>
+Date: Wed, 10 Jun 2026 20:53:55 +0800
+Subject: [PATCH] =?UTF-8?q?UBIBoot:=20=E4=B8=B2=E5=8F=A3=E8=B0=83=E8=AF=95?=
+ =?UTF-8?q?=20+=20uImage=20=E6=94=AF=E6=8C=81=20+=20linux-7.0.12=20?=
+ =?UTF-8?q?=E9=80=82=E9=85=8D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- 启用 USE_SERIAL (UART2 @ 57600)
+- 添加 LD_ADDR/exec_addr/load target 串口打印
+- 添加内核加载文件大小和地址打印
+- LD_ADDR 更新为 0x00b90000 (适配 linux-7.0.12 MIPS_GENERIC)
+- 禁用 SYSPART_INIT/MININIT1_COMPAT (使用 initramfs 替代)
+- GCC 14 适配: -fno-PIE -fno-stack-protector -no-pie, 移除 -flto
+
+Signed-off-by: x <x@rg350>
+---
+ Makefile          |  4 ++--
+ config-gcw0.mk    |  2 +-
+ src/config-gcw0.h |  6 ++++--
+ src/config.h      | 10 ++++++++--
+ src/fat.c         | 13 +++++++++++--
+ src/main.c        | 12 +++++++++++-
+ 6 files changed, 37 insertions(+), 10 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 8fb6281..0728c81 100644
+--- a/Makefile
++++ b/Makefile
+@@ -20,10 +20,10 @@ OBJCOPY = $(CROSS_COMPILE)objcopy
+ OBJDUMP = $(CROSS_COMPILE)objdump
+ NM = $(CROSS_COMPILE)nm
+ 
+-CFLAGS	:= -Wall -Os -fno-pic -mno-abicalls -mno-check-zero-division -ffreestanding -flto
++CFLAGS	:= -Wall -Os -fno-pic -fno-PIE -fno-stack-protector -mno-abicalls -mno-check-zero-division -ffreestanding
+ CFLAGS	+= $(CFLAGS_all)
+ CPPFLAGS := -DBOARD_$(BOARD) -DJZ_VERSION=$(JZ_VERSION)
+-LDFLAGS	:= -nostdlib -EL -T target-$(BOARD).ld
++LDFLAGS	:= -nostdlib -no-pie -EL -T target-$(BOARD).ld
+ 
+ OUTDIR	:= output/$(CONFIG)
+ 
+diff --git a/config-gcw0.mk b/config-gcw0.mk
+index a8ed8ca..54d3baf 100644
+--- a/config-gcw0.mk
++++ b/config-gcw0.mk
+@@ -1,5 +1,5 @@
+ GC_FUNCTIONS = True
+-# USE_SERIAL = True
++USE_SERIAL = True
+ # BKLIGHT_ON = True
+ # USE_NAND = True
+ # USE_UBI = True
+diff --git a/src/config-gcw0.h b/src/config-gcw0.h
+index 3f91066..b2efe9d 100644
+--- a/src/config-gcw0.h
++++ b/src/config-gcw0.h
+@@ -9,8 +9,10 @@
+ 
+ #define MBR_PRELOAD_ADDR	0x80000000
+ 
+-#define SYSPART_INIT		"/mininit-syspart"
+-#define MININIT1_COMPAT
++/* SYSPART_INIT and MININIT1_COMPAT disabled:
++ * Using embedded initramfs with rdinit=/sbin/init instead of mininit-syspart.
++ * UBIBoot will only pass mem=, console=, hwvariant= -- no root=/init= params.
++ */
+ 
+ #define RFKILL_STATE		0
+ 
+diff --git a/src/config.h b/src/config.h
+index 8243fa1..46d1e6b 100644
+--- a/src/config.h
++++ b/src/config.h
+@@ -12,8 +12,14 @@
+ #define FAT_BOOTIMAGE_ALT_NAME	"UZIMAGE BAK"
+ /*                            	12345678123 */
+ 
+-/* Physical address to load kernel image at */
+-#define LD_ADDR					0x00600000
++/* Physical address to load kernel image at.
++ * Must match VMLINUZ_LOAD_ADDRESS - KSEG0 (0x80000000).
++ * MIPS_GENERIC uses load addr 0x80100000 (not 0x80000000).
++ * calc_vmlinuz_load_addr(vmlinux.bin, 0x80100000) = 0x80b90000
++ * (with embedded initramfs, kernel is larger → higher address).
++ * LD_ADDR = 0x80b90000 - 0x80000000 = 0x00b90000.
++ */
++#define LD_ADDR					0x00b90000
+ 
+ /* Board-specific config */
+ #if defined(BOARD_gcw0)
+diff --git a/src/fat.c b/src/fat.c
+index fa3b328..3a6cabf 100644
+--- a/src/fat.c
++++ b/src/fat.c
+@@ -261,6 +261,7 @@ int mmc_load_kernel(unsigned int id, void *ld_addr, int alt, void **exec_addr)
+ 		entry = find_file(dir_start, dir_end, kernel_names[kernel]);
+ 
+ 		if (entry) {
++			void *load_end;
+ 			dir_start = NULL;
+ 			*exec_addr = ld_addr;
+ 
+@@ -268,10 +269,18 @@ int mmc_load_kernel(unsigned int id, void *ld_addr, int alt, void **exec_addr)
+ 			SERIAL_PUTS(kernel_names[kernel]);
+ 			SERIAL_PUTC('\n');
+ 
+-			if (load_cluster_chain(
++			load_end = load_cluster_chain(
+ 						id, entry->starthi << 16 | entry->start,
+-						ld_addr, (kernel & 1) ? NULL : exec_addr))
++						ld_addr, (kernel & 1) ? NULL : exec_addr);
++			if (load_end) {
++				unsigned int size = (unsigned int)(load_end - ld_addr);
++				SERIAL_PUTS("MMC: Loaded ");
++				SERIAL_PUTI(size);
++				SERIAL_PUTS(" bytes at 0x");
++				serial_puth((unsigned int) ld_addr);
++				SERIAL_PUTC('\n');
+ 				return kernel >> 1;
++			}
+ 			err = -1;
+ 		}
+ 	}
+diff --git a/src/main.c b/src/main.c
+index 4f464d9..77dbfce 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -280,7 +280,17 @@ void c_main(void)
+ 	jz_flush_icache();
+ 	*/
+ 
+-	SERIAL_PUTS("Kernel loaded. Executing...\n\n");
++	SERIAL_PUTS("Kernel loaded. Executing...\n");
++	SERIAL_PUTS("  LD_ADDR     = 0x");
++	serial_puth(LD_ADDR);
++	SERIAL_PUTC('\n');
++	SERIAL_PUTS("  load target = 0x");
++	serial_puth((unsigned int) (KSEG1 + LD_ADDR));
++	SERIAL_PUTC('\n');
++	SERIAL_PUTS("  exec_addr   = 0x");
++	serial_puth((unsigned int) exec_addr);
++	SERIAL_PUTC('\n');
++	SERIAL_PUTC('\n');
+ 
+ 	/* Boot the kernel */
+ 	((kernel_main) exec_addr) (
+-- 
+2.54.0
+

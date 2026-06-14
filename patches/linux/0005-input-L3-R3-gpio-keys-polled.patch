@@ -1,0 +1,54 @@
+From ef29e33da96136724fbb7842df620fee39b0f679 Mon Sep 17 00:00:00 2001
+From: hsyysy <hsyysy@163.com>
+Date: Sat, 13 Jun 2026 17:59:05 +0800
+Subject: [PATCH 05/10] =?UTF-8?q?input:=20=E6=B7=BB=E5=8A=A0=20L3/R3=20?=
+ =?UTF-8?q?=E6=91=87=E6=9D=86=E6=8C=89=E4=B8=8B=E6=8C=89=E9=94=AE=E5=88=B0?=
+ =?UTF-8?q?=20gpio-keys-polled?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- L3: &gpb 14, BTN_THUMBL (实机 devmem 扫描确认)
+- R3: &gpb 15, BTN_THUMBR (实机 devmem 扫描确认)
+- 修正 VOL_DOWN 按钮编号 (button-17 → button-19, 避免重复)
+
+之前错误排除为硬件不存在, 实机验证确认摇杆可按下.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ arch/mips/boot/dts/ingenic/gcw0.dts | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/arch/mips/boot/dts/ingenic/gcw0.dts b/arch/mips/boot/dts/ingenic/gcw0.dts
+index 328896492..ff54556ee 100644
+--- a/arch/mips/boot/dts/ingenic/gcw0.dts
++++ b/arch/mips/boot/dts/ingenic/gcw0.dts
+@@ -229,12 +229,24 @@ button-15 {
+ 		};
+ 
+ 		button-16 {
++			label = "L3";
++			linux,code = <BTN_THUMBL>;
++			gpios = <&gpb 14 GPIO_ACTIVE_LOW>;
++		};
++
++		button-17 {
++			label = "R3";
++			linux,code = <BTN_THUMBR>;
++			gpios = <&gpb 15 GPIO_ACTIVE_LOW>;
++		};
++
++		button-18 {
+ 			label = "VOL_UP";
+ 			linux,code = <KEY_VOLUMEUP>;
+ 			gpios = <&gpb 12 GPIO_ACTIVE_LOW>;
+ 		};
+ 
+-		button-17 {
++		button-19 {
+ 			label = "VOL_DOWN";
+ 			linux,code = <KEY_VOLUMEDOWN>;
+ 			gpios = <&gpb 13 GPIO_ACTIVE_LOW>;
+-- 
+2.54.0
+

@@ -1,0 +1,30 @@
+From 11ec5c21c53b75944b76a26fc00b7762266bb7bf Mon Sep 17 00:00:00 2001
+From: hsyysy <hsyysy@163.com>
+Date: Wed, 10 Jun 2026 07:59:42 +0800
+Subject: [PATCH 01/10] MIPS: Ingenic: select DEBUG_ZBOOT if DEBUG_KERNEL
+
+MACH_INGENIC_SOC selects SYS_SUPPORTS_ZBOOT_UART16550 but was missing
+the corresponding select for DEBUG_ZBOOT. Without this, the zboot
+decompressor produces no serial output, making early boot debugging
+impossible.
+
+Signed-off-by: x <x@rg350>
+---
+ arch/mips/Kconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/mips/Kconfig b/arch/mips/Kconfig
+index e48b62b4d..9a16fcba7 100644
+--- a/arch/mips/Kconfig
++++ b/arch/mips/Kconfig
+@@ -451,6 +451,7 @@ config MACH_INGENIC_SOC
+ 	select MACH_INGENIC
+ 	select MACH_GENERIC_CORE
+ 	select SYS_SUPPORTS_ZBOOT_UART16550
++	select DEBUG_ZBOOT if DEBUG_KERNEL
+ 	select CPU_SUPPORTS_CPUFREQ
+ 	select MIPS_EXTERNAL_TIMER
+ 
+-- 
+2.54.0
+

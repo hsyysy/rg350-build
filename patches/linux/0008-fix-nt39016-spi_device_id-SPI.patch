@@ -1,0 +1,43 @@
+From 9c97b462c697c168b9e17782c00756532cdea4f2 Mon Sep 17 00:00:00 2001
+From: hsyysy <hsyysy@163.com>
+Date: Sun, 14 Jun 2026 09:03:03 +0800
+Subject: [PATCH 08/10] =?UTF-8?q?fix:=20nt39016=20=E6=B7=BB=E5=8A=A0=20spi?=
+ =?UTF-8?q?=5Fdevice=5Fid=20=E8=A1=A8=E6=B6=88=E9=99=A4=20SPI=20=E9=A9=B1?=
+ =?UTF-8?q?=E5=8A=A8=E8=AD=A6=E5=91=8A?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+serial.log: SPI driver nt39016 has no spi_device_id for kingdisplay,kd035g6-54nt
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/panel/panel-novatek-nt39016.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/gpu/drm/panel/panel-novatek-nt39016.c b/drivers/gpu/drm/panel/panel-novatek-nt39016.c
+index a629976ba..3df66ae76 100644
+--- a/drivers/gpu/drm/panel/panel-novatek-nt39016.c
++++ b/drivers/gpu/drm/panel/panel-novatek-nt39016.c
+@@ -341,11 +341,18 @@ static const struct of_device_id nt39016_of_match[] = {
+ };
+ MODULE_DEVICE_TABLE(of, nt39016_of_match);
+ 
++static const struct spi_device_id nt39016_spi_ids[] = {
++	{ "kd035g6-54nt", (kernel_ulong_t)&kd035g6_info },
++	{ /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(spi, nt39016_spi_ids);
++
+ static struct spi_driver nt39016_driver = {
+ 	.driver = {
+ 		.name = "nt39016",
+ 		.of_match_table = nt39016_of_match,
+ 	},
++	.id_table = nt39016_spi_ids,
+ 	.probe = nt39016_probe,
+ 	.remove = nt39016_remove,
+ };
+-- 
+2.54.0
+

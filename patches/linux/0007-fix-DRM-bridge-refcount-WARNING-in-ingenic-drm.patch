@@ -1,0 +1,77 @@
+From 2522e176954d8929d8f5f6289febb8e23b132a57 Mon Sep 17 00:00:00 2001
+From: hsyysy <hsyysy@163.com>
+Date: Sun, 14 Jun 2026 08:57:11 +0800
+Subject: [PATCH 07/10] fix: DRM bridge refcount WARNING in ingenic-drm
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- ingenic-drm-drv.c: 用 devm_drm_bridge_alloc() + drm_bridge_add() 替代
+  手工 funcs 赋值, 消除 3 个 refcount WARNING (use-after-free, leak, underflow)
+- gcw0_defconfig: 添加 CONFIG_INITRAMFS_ROOT_UID=0 避免 olddefconfig 交互提示
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ arch/mips/configs/gcw0_defconfig          |  1 +
+ drivers/gpu/drm/ingenic/ingenic-drm-drv.c | 17 +++++++++++++----
+ 2 files changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/arch/mips/configs/gcw0_defconfig b/arch/mips/configs/gcw0_defconfig
+index 4ef265493..0ffb16a1f 100644
+--- a/arch/mips/configs/gcw0_defconfig
++++ b/arch/mips/configs/gcw0_defconfig
+@@ -147,3 +147,4 @@ CONFIG_CRYPTO_ECHAINIV=y
+ CONFIG_FONTS=y
+ CONFIG_FONT_6x10=y
+ CONFIG_DEBUG_FS=y
++CONFIG_INITRAMFS_ROOT_UID=0
+diff --git a/drivers/gpu/drm/ingenic/ingenic-drm-drv.c b/drivers/gpu/drm/ingenic/ingenic-drm-drv.c
+index 660158933..8a82e3802 100644
+--- a/drivers/gpu/drm/ingenic/ingenic-drm-drv.c
++++ b/drivers/gpu/drm/ingenic/ingenic-drm-drv.c
+@@ -121,8 +121,9 @@ struct ingenic_drm {
+ };
+ 
+ struct ingenic_drm_bridge {
++	struct drm_bridge bridge;           /* 必须首个: devm_drm_bridge_alloc */
+ 	struct drm_encoder encoder;
+-	struct drm_bridge bridge, *next_bridge;
++	struct drm_bridge *next_bridge;
+ 
+ 	struct drm_bus_cfg bus_cfg;
+ };
+@@ -1287,10 +1288,17 @@ static int ingenic_drm_bind(struct device *dev, bool has_components)
+ 			bridge = devm_drm_panel_bridge_add_typed(dev, panel,
+ 								 DRM_MODE_CONNECTOR_DPI);
+ 
+-		ib = drmm_encoder_alloc(drm, struct ingenic_drm_bridge, encoder,
+-					NULL, DRM_MODE_ENCODER_DPI, NULL);
++		ib = devm_drm_bridge_alloc(dev, struct ingenic_drm_bridge, bridge,
++					    &ingenic_drm_bridge_funcs);
+ 		if (IS_ERR(ib)) {
+ 			ret = PTR_ERR(ib);
++			dev_err(dev, "Failed to alloc bridge: %d\n", ret);
++			goto err_drvdata;
++		}
++
++		ret = drmm_encoder_init(drm, &ib->encoder, NULL,
++					DRM_MODE_ENCODER_DPI, NULL);
++		if (ret) {
+ 			dev_err(dev, "Failed to init encoder: %d\n", ret);
+ 			goto err_drvdata;
+ 		}
+@@ -1300,9 +1308,10 @@ static int ingenic_drm_bind(struct device *dev, bool has_components)
+ 
+ 		drm_encoder_helper_add(encoder, &ingenic_drm_encoder_helper_funcs);
+ 
+-		ib->bridge.funcs = &ingenic_drm_bridge_funcs;
+ 		ib->next_bridge = bridge;
+ 
++		drm_bridge_add(&ib->bridge);
++
+ 		ret = drm_bridge_attach(encoder, &ib->bridge, NULL,
+ 					DRM_BRIDGE_ATTACH_NO_CONNECTOR);
+ 		if (ret) {
+-- 
+2.54.0
+

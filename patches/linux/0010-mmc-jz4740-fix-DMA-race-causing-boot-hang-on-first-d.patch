@@ -1,0 +1,111 @@
+From 34a18bceaec1df7853bc56bc071cfdb4075783f7 Mon Sep 17 00:00:00 2001
+From: hsyysy <hsyysy@163.com>
+Date: Sun, 14 Jun 2026 16:01:30 +0800
+Subject: [PATCH 10/10] mmc: jz4740: fix DMA race causing boot hang on first
+ data transfer
+
+Start DMA before issuing read commands. The SD card begins sending
+data immediately after the response; if DMA is not programmed by
+then, the RX FIFO overflows and DATA_TRAN_DONE never fires, causing
+the transfer to hang until the 5-second timeout.
+
+For write commands, keep the original flow where DMA is started in
+the irq_worker after the response, as early DMA programming for
+writes causes the card to become unresponsive.
+
+Fixes: ~50% boot hang rate on RG350 (JZ4770) when MMC controllers
+probe in certain order.
+---
+ drivers/mmc/host/jz4740_mmc.c | 63 ++++++++++++++++++++++++++---------
+ 1 file changed, 47 insertions(+), 16 deletions(-)
+
+diff --git a/drivers/mmc/host/jz4740_mmc.c b/drivers/mmc/host/jz4740_mmc.c
+index 6a0d0250d..dae029f4d 100644
+--- a/drivers/mmc/host/jz4740_mmc.c
++++ b/drivers/mmc/host/jz4740_mmc.c
+@@ -773,28 +773,27 @@ static irqreturn_t jz_mmc_irq_worker(int irq, void *devid)
+ 		if (!data)
+ 			break;
+ 
+-		jz_mmc_prepare_data_transfer(host);
++		if (host->use_dma && (data->flags & MMC_DATA_READ)) {
++			/* Read: DMA was already started in request(). */
++		} else if (!host->use_dma) {
++			jz_mmc_prepare_data_transfer(host);
++		}
+ 		fallthrough;
+ 
+ 	case JZ4740_MMC_STATE_TRANSFER_DATA:
+ 		if (host->use_dma) {
+-			/* Use DMA if enabled.
+-			 * Data transfer direction is defined later by
+-			 * relying on data flags in
+-			 * jz4740_mmc_prepare_dma_data() and
+-			 * jz4740_mmc_start_dma_transfer().
+-			 */
+-			timeout = jz4740_mmc_start_dma_transfer(host, data);
+-			data->bytes_xfered = data->blocks * data->blksz;
+-		} else if (data->flags & MMC_DATA_READ)
+-			/* Use PIO if DMA is not enabled.
+-			 * Data transfer direction was defined before
+-			 * by relying on data flags in
+-			 * jz_mmc_prepare_data_transfer().
+-			 */
++			if (data->flags & MMC_DATA_READ) {
++				/* Read: DMA already started, nothing to do. */
++			} else {
++				/* Write: start DMA now, after response. */
++				timeout = jz4740_mmc_start_dma_transfer(host, data);
++				data->bytes_xfered = data->blocks * data->blksz;
++			}
++		} else if (data->flags & MMC_DATA_READ) {
+ 			timeout = jz4740_mmc_read_data(host, data);
+-		else
++		} else {
+ 			timeout = jz4740_mmc_write_data(host, data);
++		}
+ 
+ 		if (unlikely(timeout)) {
+ 			host->state = JZ4740_MMC_STATE_TRANSFER_DATA;
+@@ -934,6 +933,38 @@ static void jz4740_mmc_request(struct mmc_host *mmc, struct mmc_request *req)
+ 	set_bit(0, &host->waiting);
+ 	mod_timer(&host->timeout_timer,
+ 		  jiffies + msecs_to_jiffies(JZ_MMC_REQ_TIMEOUT_MS));
++
++	/*
++	 * For read commands, start DMA before issuing the command.
++	 * The SD card begins sending data immediately after the
++	 * response; if DMA is not programmed by then, the RX FIFO
++	 * overflows, causing the transfer to hang forever waiting
++	 * for DATA_TRAN_DONE.
++	 *
++	 * For write commands, keep the original flow: DMA is started
++	 * in the irq_worker after the response. Starting DMA early
++	 * for writes causes the card to become unresponsive (the
++	 * controller's CMDAT.DMA_EN is not set until send_command,
++	 * and early DMA programming confuses the TX FIFO state).
++	 */
++	if (req->cmd->data && host->use_dma &&
++	    (req->cmd->data->flags & MMC_DATA_READ)) {
++		struct mmc_data *data = req->cmd->data;
++		int ret;
++
++		ret = jz4740_mmc_start_dma_transfer(host, data);
++		if (ret) {
++			timer_delete_sync(&host->timeout_timer);
++			clear_bit(0, &host->waiting);
++			host->req = NULL;
++			req->cmd->error = ret;
++			data->error = ret;
++			mmc_request_done(host->mmc, req);
++			return;
++		}
++		data->bytes_xfered = data->blocks * data->blksz;
++	}
++
+ 	jz4740_mmc_send_command(host, req->cmd);
+ }
+ 
+-- 
+2.54.0
+

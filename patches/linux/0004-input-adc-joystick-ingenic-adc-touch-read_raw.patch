@@ -1,0 +1,287 @@
+From 43f31f28029c1ae29891eb04abed42bceed4ee3a Mon Sep 17 00:00:00 2001
+From: hsyysy <hsyysy@163.com>
+Date: Sat, 13 Jun 2026 17:53:31 +0800
+Subject: [PATCH 04/10] =?UTF-8?q?input:=20adc-joystick=20=E5=8F=8C?=
+ =?UTF-8?q?=E6=91=87=E6=9D=86=E6=94=AF=E6=8C=81=20+=20ingenic-adc=20touch?=
+ =?UTF-8?q?=20=E9=80=9A=E9=81=93=20read=5Fraw?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+DTS:
+- 启用 ADC 控制器 (status = okay)
+- 添加 joystick_left: TOUCH_XP(ABS_X) + TOUCH_YP(ABS_Y)
+- 添加 joystick_right: TOUCH_XN(ABS_RX) + TOUCH_YN(ABS_RY)
+- 校准范围基于实机 devmem ADC 扫描
+
+ingenic-adc.c 驱动补丁:
+- 为 TOUCH_XP/YP/XN/YN 添加 read_raw 支持
+- Touch 引擎使用连续模式 (engine 2), 需要 enable→sleep→read→disable
+- ADCMD 序列对齐主线 ingenic_adc_set_adcmd (XNGRU/YNGRU + VREFNXN/VREFNYN)
+- 读取 ADTCH 寄存器: pair1=XP<<16|YP, pair2=XN<<16|YN
+
+实机验证: hexdump /dev/input/event1 (左) 和 event2 (右) 确认
+ABS_X/Y 范围 211~3223, ABS_RX/RY 范围 289~2980
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ arch/mips/boot/dts/ingenic/gcw0.dts |  54 ++++++++++++
+ drivers/iio/adc/ingenic-adc.c       | 128 ++++++++++++++++++++++++++++
+ 2 files changed, 182 insertions(+)
+
+diff --git a/arch/mips/boot/dts/ingenic/gcw0.dts b/arch/mips/boot/dts/ingenic/gcw0.dts
+index 3aa44c8b9..328896492 100644
+--- a/arch/mips/boot/dts/ingenic/gcw0.dts
++++ b/arch/mips/boot/dts/ingenic/gcw0.dts
+@@ -241,6 +241,60 @@ button-17 {
+ 		};
+ 	};
+ 
++	adc {
++		status = "okay";
++	};
++
++	joystick_left: adc-joystick-left {
++		compatible = "adc-joystick";
++		io-channels = <&adc INGENIC_ADC_TOUCH_XP>,
++		              <&adc INGENIC_ADC_TOUCH_YP>;
++		poll-interval = <20>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		axis@0 {
++			reg = <0>;
++			linux,code = <ABS_X>;
++			abs-range = <211 2936>;
++			abs-flat = <200>;
++			abs-fuzz = <4>;
++		};
++
++		axis@1 {
++			reg = <1>;
++			linux,code = <ABS_Y>;
++			abs-range = <1782 3223>;
++			abs-flat = <200>;
++			abs-fuzz = <4>;
++		};
++	};
++
++	joystick_right: adc-joystick-right {
++		compatible = "adc-joystick";
++		io-channels = <&adc INGENIC_ADC_TOUCH_XN>,
++		              <&adc INGENIC_ADC_TOUCH_YN>;
++		poll-interval = <20>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		axis@0 {
++			reg = <0>;
++			linux,code = <ABS_RX>;
++			abs-range = <328 2980>;
++			abs-flat = <200>;
++			abs-fuzz = <4>;
++		};
++
++		axis@1 {
++			reg = <1>;
++			linux,code = <ABS_RY>;
++			abs-range = <289 1920>;
++			abs-flat = <200>;
++			abs-fuzz = <4>;
++		};
++	};
++
+ 	i2c3: i2c-controller@3 {
+ 		compatible = "i2c-gpio";
+ 		#address-cells = <1>;
+diff --git a/drivers/iio/adc/ingenic-adc.c b/drivers/iio/adc/ingenic-adc.c
+index 1e802c877..21f3a364b 100644
+--- a/drivers/iio/adc/ingenic-adc.c
++++ b/drivers/iio/adc/ingenic-adc.c
+@@ -455,6 +455,8 @@ static const struct iio_chan_spec jz4770_channels[] = {
+ 		.indexed = 1,
+ 		.channel = INGENIC_ADC_TOUCH_XP,
+ 		.scan_index = 0,
++		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |
++						  BIT(IIO_CHAN_INFO_SCALE),
+ 		.scan_type = {
+ 			.sign = 'u',
+ 			.realbits = 12,
+@@ -466,6 +468,8 @@ static const struct iio_chan_spec jz4770_channels[] = {
+ 		.indexed = 1,
+ 		.channel = INGENIC_ADC_TOUCH_YP,
+ 		.scan_index = 1,
++		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |
++						  BIT(IIO_CHAN_INFO_SCALE),
+ 		.scan_type = {
+ 			.sign = 'u',
+ 			.realbits = 12,
+@@ -477,6 +481,8 @@ static const struct iio_chan_spec jz4770_channels[] = {
+ 		.indexed = 1,
+ 		.channel = INGENIC_ADC_TOUCH_XN,
+ 		.scan_index = 2,
++		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |
++						  BIT(IIO_CHAN_INFO_SCALE),
+ 		.scan_type = {
+ 			.sign = 'u',
+ 			.realbits = 12,
+@@ -488,6 +494,8 @@ static const struct iio_chan_spec jz4770_channels[] = {
+ 		.indexed = 1,
+ 		.channel = INGENIC_ADC_TOUCH_YN,
+ 		.scan_index = 3,
++		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |
++						  BIT(IIO_CHAN_INFO_SCALE),
+ 		.scan_type = {
+ 			.sign = 'u',
+ 			.realbits = 12,
+@@ -628,6 +636,105 @@ static int ingenic_adc_read_avail(struct iio_dev *iio_dev,
+ 	}
+ }
+ 
++static int ingenic_adc_read_touch_raw(struct ingenic_adc *adc,
++				       int channel, int *val)
++{
++	u32 cfg, tdat;
++
++	switch (channel) {
++	case INGENIC_ADC_TOUCH_XP:
++	case INGENIC_ADC_TOUCH_YP:
++	case INGENIC_ADC_TOUCH_XN:
++	case INGENIC_ADC_TOUCH_YN:
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	mutex_lock(&adc->lock);
++	cfg = readl(adc->base + JZ_ADC_REG_CFG);
++
++	/*
++	 * Configure: 4 samples, no pull-up, CMD_SEL=1, engine 2 (touch).
++	 * Matches old jz-sadc: sample_num=4, ADSAME=2, ADWAIT=80.
++	 */
++	writel((cfg & ~(JZ_ADC_REG_CFG_TOUCH_OPS_MASK | JZ_ADC_REG_CFG_CMD_SEL))
++		| JZ_ADC_REG_CFG_SAMPLE_NUM(4)
++		| JZ_ADC_REG_CFG_CMD_SEL,
++		adc->base + JZ_ADC_REG_CFG);
++
++	writew(2, adc->base + JZ_ADC_REG_ADSAME);
++	writew(80, adc->base + JZ_ADC_REG_ADWAIT);
++
++	/* Clear stale data */
++	writel(0, adc->base + JZ_ADC_REG_ADTCH);
++
++	/*
++	 * Program full ADCMD sequence — matches mainline ingenic_adc_set_adcmd
++	 * for active_scan_mask=0xf (all 4 touch channels).
++	 * The touch engine repeatedly cycles through the sequence.
++	 */
++	readl(adc->base + JZ_ADC_REG_ADCMD);
++	/* Pair 1: YP vs GND (XN as GND ref) */
++	writel(JZ_ADC_REG_ADCMD_XNGRU | JZ_ADC_REG_ADCMD_VREFNXN |
++	       JZ_ADC_REG_ADCMD_VREFPVDD33 | JZ_ADC_REG_ADCMD_YPADC,
++	       adc->base + JZ_ADC_REG_ADCMD);
++	/* Pair 1: XP vs GND (YN as GND ref) */
++	writel(JZ_ADC_REG_ADCMD_YNGRU | JZ_ADC_REG_ADCMD_VREFNYN |
++	       JZ_ADC_REG_ADCMD_VREFPVDD33 | JZ_ADC_REG_ADCMD_XPADC,
++	       adc->base + JZ_ADC_REG_ADCMD);
++	/* Pair 2: YN vs GND (XN as GND ref) */
++	writel(JZ_ADC_REG_ADCMD_XNGRU | JZ_ADC_REG_ADCMD_VREFNXN |
++	       JZ_ADC_REG_ADCMD_VREFPVDD33 | JZ_ADC_REG_ADCMD_YNADC,
++	       adc->base + JZ_ADC_REG_ADCMD);
++	/* Pair 2: XN vs GND (YN as GND ref) */
++	writel(JZ_ADC_REG_ADCMD_YNGRU | JZ_ADC_REG_ADCMD_VREFNYN |
++	       JZ_ADC_REG_ADCMD_VREFPVDD33 | JZ_ADC_REG_ADCMD_XNADC,
++	       adc->base + JZ_ADC_REG_ADCMD);
++	writel(0, adc->base + JZ_ADC_REG_ADCMD);
++
++	/* Enable touch engine — continuous mode, cycles through all pairs */
++	ingenic_adc_enable_unlocked(adc, 2, true);
++
++	/* Wait for at least one full conversion cycle (~20ms at 50Hz) */
++	mutex_unlock(&adc->lock);
++	msleep(50);
++	mutex_lock(&adc->lock);
++
++	/*
++	 * Read pair 1: ADTCH = XP (upper 16) | YP (lower 16).
++	 * Then pair 2: ADTCH = XN (upper 16) | YN (lower 16).
++	 */
++	switch (channel) {
++	case INGENIC_ADC_TOUCH_XP:
++	case INGENIC_ADC_TOUCH_YP:
++		tdat = readl(adc->base + JZ_ADC_REG_ADTCH);
++		*val = (channel == INGENIC_ADC_TOUCH_XP)
++			? (tdat >> 16) & 0xFFF
++			: tdat & 0xFFF;
++		break;
++	case INGENIC_ADC_TOUCH_XN:
++	case INGENIC_ADC_TOUCH_YN:
++		/* Read pair 1 first to advance engine to pair 2 */
++		readl(adc->base + JZ_ADC_REG_ADTCH);
++		tdat = readl(adc->base + JZ_ADC_REG_ADTCH);
++		*val = (channel == INGENIC_ADC_TOUCH_XN)
++			? (tdat >> 16) & 0xFFF
++			: tdat & 0xFFF;
++		break;
++	default:
++		break;
++	}
++
++	/* Disable touch engine */
++	ingenic_adc_enable_unlocked(adc, 2, false);
++
++	writel(cfg, adc->base + JZ_ADC_REG_CFG);
++	mutex_unlock(&adc->lock);
++
++	return IIO_VAL_INT;
++}
++
+ static int ingenic_adc_read_chan_info_raw(struct iio_dev *iio_dev,
+ 					  struct iio_chan_spec const *chan,
+ 					  int *val)
+@@ -642,6 +749,19 @@ static int ingenic_adc_read_chan_info_raw(struct iio_dev *iio_dev,
+ 		return ret;
+ 	}
+ 
++	switch (chan->channel) {
++	case INGENIC_ADC_TOUCH_XP:
++	case INGENIC_ADC_TOUCH_YP:
++	case INGENIC_ADC_TOUCH_XN:
++	case INGENIC_ADC_TOUCH_YN:
++	case INGENIC_ADC_TOUCH_XD:
++	case INGENIC_ADC_TOUCH_YD:
++		ret = ingenic_adc_read_touch_raw(adc, chan->channel, val);
++		if (!ret)
++			ret = IIO_VAL_INT;
++		goto out_touch;
++	}
++
+ 	/* We cannot sample the aux channels in parallel. */
+ 	mutex_lock(&adc->aux_lock);
+ 	if (adc->soc_data->has_aux_md && engine == 0) {
+@@ -678,6 +798,8 @@ static int ingenic_adc_read_chan_info_raw(struct iio_dev *iio_dev,
+ 	ret = IIO_VAL_INT;
+ out:
+ 	mutex_unlock(&adc->aux_lock);
++
++out_touch:
+ 	clk_disable(adc->clk);
+ 
+ 	return ret;
+@@ -696,6 +818,12 @@ static int ingenic_adc_read_raw(struct iio_dev *iio_dev,
+ 		return ingenic_adc_read_chan_info_raw(iio_dev, chan, val);
+ 	case IIO_CHAN_INFO_SCALE:
+ 		switch (chan->channel) {
++		case INGENIC_ADC_TOUCH_XP:
++		case INGENIC_ADC_TOUCH_YP:
++		case INGENIC_ADC_TOUCH_XN:
++		case INGENIC_ADC_TOUCH_YN:
++		case INGENIC_ADC_TOUCH_XD:
++		case INGENIC_ADC_TOUCH_YD:
+ 		case INGENIC_ADC_AUX0:
+ 		case INGENIC_ADC_AUX:
+ 		case INGENIC_ADC_AUX2:
+-- 
+2.54.0
+

@@ -1,0 +1,35 @@
+From b222defee03fe5f9122729d341ee2e0690e89317 Mon Sep 17 00:00:00 2001
+From: hsyysy <hsyysy@163.com>
+Date: Sat, 13 Jun 2026 18:56:12 +0800
+Subject: [PATCH 06/10] =?UTF-8?q?dma:=20jz4780:=20=E4=BF=AE=E5=A4=8D=20tx?=
+ =?UTF-8?q?=5Fstatus=20NULL=20=E6=8C=87=E9=92=88=E5=B4=A9=E6=BA=83?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+jz4780_dma_tx_status 中 jzchan->desc 可能为 NULL,
+导致 aplay 播放时 kernel oops (BadVA=0x00000000).
+添加 NULL 检查.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/dma/dma-jz4780.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/dma/dma-jz4780.c b/drivers/dma/dma-jz4780.c
+index 6070dfdb7..614f18d07 100644
+--- a/drivers/dma/dma-jz4780.c
++++ b/drivers/dma/dma-jz4780.c
+@@ -658,7 +658,8 @@ static enum dma_status jz4780_dma_tx_status(struct dma_chan *chan,
+ 		/* On the issued list, so hasn't been processed yet */
+ 		residue = jz4780_dma_desc_residue(jzchan,
+ 					to_jz4780_dma_desc(vdesc), 0);
+-	} else if (cookie == jzchan->desc->vdesc.tx.cookie) {
++	} else if (jzchan->desc &&
++		   cookie == jzchan->desc->vdesc.tx.cookie) {
+ 		residue = jz4780_dma_desc_residue(jzchan, jzchan->desc,
+ 					jzchan->curr_hwdesc + 1);
+ 	}
+-- 
+2.54.0
+

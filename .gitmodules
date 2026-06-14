@@ -1,0 +1,12 @@
+[submodule "ubiboot"]
+	path = ubiboot
+	url = https://github.com/tonyjih/RG350_UBIBoot.git
+[submodule "buildroot"]
+	path = buildroot
+	url = https://github.com/buildroot/buildroot.git
+[submodule "linux"]
+	path = linux
+	url = https://github.com/gregkh/linux.git
+[submodule "busybox"]
+	path = busybox
+	url = https://github.com/mirror/busybox.git
