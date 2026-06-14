@@ -74,33 +74,24 @@ jobs:
           command -v "${CROSS}gcc" && ${CROSS}gcc --version | head -1
 
           cd busybox
-          mkdir -p build
-          make O=build defconfig
-          sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' build/.config
-          sed -i 's/CONFIG_STATIC=n/CONFIG_STATIC=y/' build/.config
-          sed -i 's/CONFIG_FEATURE_HAVE_RPC=y/# CONFIG_FEATURE_HAVE_RPC is not set/' build/.config
-          sed -i 's/CONFIG_FEATURE_INETD_RPC=y/# CONFIG_FEATURE_INETD_RPC is not set/' build/.config
+          make defconfig
+          sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
+          sed -i 's/CONFIG_FEATURE_HAVE_RPC=y/# CONFIG_FEATURE_HAVE_RPC is not set/' .config
+          sed -i 's/CONFIG_FEATURE_INETD_RPC=y/# CONFIG_FEATURE_INETD_RPC is not set/' .config
           for opt in SWITCH_ROOT PIVOT_ROOT MOUNT UMOUNT MKDIR MKNOD \
                      MDEV DEVTMPFS SH ASH LS CAT CP MV RM LN CHMOD CHOWN \
                      GREP FIND XARGS PS KILL PIDOF IFCONFIG IP ROUTE \
                      MOUNTPOINT SLEEP SYNC REBOOT POWEROFF \
                      ECHO TEST TRUE FALSE VI GUNZIP GZIP TAR DF FREE DMESG STTY INIT; do
-            sed -i "s/# CONFIG_${opt} is not set/CONFIG_${opt}=y/" build/.config 2>/dev/null || true
+            sed -i "s/# CONFIG_${opt} is not set/CONFIG_${opt}=y/" .config 2>/dev/null || true
           done
           for opt in SELINUX SYSTEMD INETD FEATURE_HAVE_RPC FEATURE_INETD_RPC TC; do
-            sed -i "s/CONFIG_${opt}=y/# CONFIG_${opt} is not set/" build/.config 2>/dev/null || true
+            sed -i "s/CONFIG_${opt}=y/# CONFIG_${opt} is not set/" .config 2>/dev/null || true
           done
-          make O=build oldconfig
-          # 强制确保静态链接
-          grep -q '^CONFIG_STATIC=y' build/.config || {
-            echo "WARNING: CONFIG_STATIC not set, forcing..."
-            sed -i '/CONFIG_STATIC/d' build/.config
-            echo 'CONFIG_STATIC=y' >> build/.config
-            make O=build oldconfig
-          }
-          grep '^CONFIG_STATIC' build/.config
-          make O=build -j$(nproc)
-          make O=build CONFIG_PREFIX=$(pwd)/_install install
+          make oldconfig
+          grep '^CONFIG_STATIC' .config
+          make -j$(nproc)
+          make CONFIG_PREFIX=$(pwd)/_install install
 
           # rootfs
           ROOTFS=$(pwd)/rootfs
