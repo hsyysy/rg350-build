@@ -166,6 +166,8 @@ jobs:
       - name: 构建 Linux 内核
         run: |
           export PATH="$(pwd)/buildroot/output/host/bin:$PATH"
+          export ARCH=mips
+          export CROSS_COMPILE=mipsel-buildroot-linux-gnu-
           INITRAMFS_GZ="$(pwd)/initramfs/rootfs.cpio.gz"
           cd linux
 
