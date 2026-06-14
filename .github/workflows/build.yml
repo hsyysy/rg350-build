@@ -103,13 +103,13 @@ jobs:
           done
           make O=build oldconfig
           make O=build -j$(nproc)
-          make O=build CONFIG_PREFIX=build/_install install
+          make O=build CONFIG_PREFIX=$(pwd)/_install install
 
           # 构建 rootfs
-          ROOTFS=$(pwd)/build/rootfs
+          ROOTFS=$(pwd)/rootfs
           rm -rf "$ROOTFS"
           mkdir -p "$ROOTFS"/{bin,sbin,usr/bin,usr/sbin,proc,sys,dev,tmp,etc,root,mnt,media}
-          cp -a build/_install/* "$ROOTFS/"
+          cp -a _install/* "$ROOTFS/"
           ln -sf bin/busybox "$ROOTFS/init"
 
           # /sbin/init (stage 1: initramfs → switch_root to buildroot)
@@ -159,8 +159,8 @@ jobs:
             mknod "$1/dev/ttyS2" c 204 66
             cd "$1"
             find . | cpio -o -H newc 2>/dev/null | gzip > "$2"
-          ' _ "$ROOTFS" "$(pwd)/../../initramfs/rootfs.cpio.gz"
-          cd ../..
+          ' _ "$ROOTFS" "$(pwd)/../initramfs/rootfs.cpio.gz"
+          cd ..
           ls -lh initramfs/rootfs.cpio.gz
 
       - name: 构建 Linux 内核
