@@ -150,8 +150,8 @@ jobs:
           PROFILE
 
           # 打包 initramfs
-          mkdir -p ../../initramfs
           cd "$ROOTFS"
+          mkdir -p ../../initramfs
           fakeroot sh -c '
             mknod "$1/dev/console" c 5 1
             mknod "$1/dev/null" c 1 3
