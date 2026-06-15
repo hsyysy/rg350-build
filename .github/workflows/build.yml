@@ -70,8 +70,9 @@ jobs:
       - name: 构建 BusyBox initramfs
         run: |
           export PATH="$(pwd)/buildroot/output/host/bin:$PATH"
-          CROSS=mipsel-buildroot-linux-gnu-
-          command -v "${CROSS}gcc" && ${CROSS}gcc --version | head -1
+          export ARCH=mips
+          export CROSS_COMPILE=mipsel-buildroot-linux-gnu-
+          command -v "${CROSS_COMPILE}gcc" && ${CROSS_COMPILE}gcc --version | head -1
 
           cd busybox
           make defconfig
