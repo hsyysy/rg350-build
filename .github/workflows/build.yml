@@ -29,6 +29,13 @@ jobs:
             libdrm-dev libegl-dev libgl-dev libgbm-dev \
             meson ninja-build python3-mako
 
+      - name: 下载 Bootlin 工具链
+        run: |
+          wget -q https://toolchains.bootlin.com/downloads/releases/toolchains/mips32el/tarballs/mips32el--glibc--stable-2025.08-1.tar.xz
+          tar xf mips32el--glibc--stable-2025.08-1.tar.xz
+          rm mips32el--glibc--stable-2025.08-1.tar.xz
+          echo "$(pwd)/mips32el--glibc--stable-2025.08-1/bin" >> $GITHUB_PATH
+
       - name: 应用补丁
         run: |
           cd linux
@@ -69,7 +76,7 @@ jobs:
 
       - name: 构建 BusyBox initramfs
         run: |
-          export PATH="$(pwd)/buildroot/output/host/bin:$PATH"
+          export PATH="$(pwd)/mips32el--glibc--stable-2025.08-1/bin:$PATH"
           export ARCH=mips
           export CROSS_COMPILE=mipsel-buildroot-linux-gnu-
           command -v "${CROSS_COMPILE}gcc" && ${CROSS_COMPILE}gcc --version | head -1
@@ -153,7 +160,7 @@ jobs:
 
       - name: 构建 Linux 内核
         run: |
-          export PATH="$(pwd)/buildroot/output/host/bin:$PATH"
+          export PATH="$(pwd)/mips32el--glibc--stable-2025.08-1/bin:$PATH"
           export ARCH=mips
           export CROSS_COMPILE=mipsel-buildroot-linux-gnu-
           INITRAMFS_GZ="$(pwd)/initramfs/rootfs.cpio.gz"
@@ -231,7 +238,7 @@ jobs:
 
       - name: 构建 UBIBoot
         run: |
-          export PATH="$(pwd)/buildroot/output/host/bin:$PATH"
+          export PATH="$(pwd)/mips32el--glibc--stable-2025.08-1/bin:$PATH"
           cd ubiboot
           CONFIG=gcw0 make clean 2>/dev/null || true
           CONFIG=gcw0 CROSS_COMPILE=mipsel-buildroot-linux-gnu- V=1 make
